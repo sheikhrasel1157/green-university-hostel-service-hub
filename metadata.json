@@ -1,0 +1,6 @@
+{
+  "name": "Green University Hostel Service Hub",
+  "description": "Comprehensive hostel management ERP with student dashboard, meal management, leave applications, complaints, fee history, and staff control.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
