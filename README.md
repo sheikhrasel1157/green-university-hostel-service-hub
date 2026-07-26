@@ -1,6 +1,5 @@
 # 🏠 Green University Hostel Service Hub
 
-![Project Banner](https://via.placeholder.com/1200x400?text=Green+University+Hostel+Service+Hub)
 
 A complete **hostel management and service automation platform** designed for Green University hostel operations. The system digitizes student management, meal tracking, fee calculation, attendance monitoring, complaints, leave applications, and administrative activities through a modern web-based interface.
 
@@ -208,7 +207,7 @@ green-university-hostel-service-hub/
 ## 1. Clone Repository
 
 ```bash
-git clone https://github.com/sheikh-17/green-university-hostel-service-hub.git
+git clone https://github.com/sheikhrasel1157/green-university-hostel-service-hub.git
 ```
 
 Move into project directory:
