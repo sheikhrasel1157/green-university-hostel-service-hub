@@ -342,6 +342,7 @@ export const mapComplaint = (row = {}) => ({
   description: row.description || "", 
   status: row.status || "Open", 
   priority: row.priority || "Medium", 
+  targetRecipient: row.target_recipient || row.targetRecipient || "BOTH",
   assignedTo: row.assigned_to || row.assignedTo || "", 
   resolutionNote: row.resolution_note || row.resolutionNote || "", 
   date: row.date || row.created_at?.slice(0, 10) || row.createdAt?.slice(0, 10) || todayIso(), 
@@ -414,6 +415,7 @@ export const mapNotification = (row = {}) => ({
   receiverId: row.receiver_id || row.receiverId || null, 
   receiverRole: row.receiver_role || row.receiverRole || null, 
   receiverStudentId: row.receiver_student_id || row.receiverStudentId || null, 
+  relatedRecordId: row.related_record_id || row.relatedRecordId || null,
   isRead: Boolean(row.is_read ?? row.isRead), 
   readAt: row.read_at || row.readAt || null, 
   expiresAt: row.expires_at || row.expiresAt || null, 
@@ -764,6 +766,7 @@ export const listLeaves = async (studentId) => {
 };
 
 export const createLeave = async (payload) => {
+  let newLeave = null;
   const client = db();
   if (client) {
     try {
@@ -780,18 +783,35 @@ export const createLeave = async (payload) => {
           .select()
           .single()
       );
-      if (result) return mapLeave(result);
+      if (result) newLeave = mapLeave(result);
     } catch (e) {}
   }
 
-  const newLeave = mapLeave({ ...payload, id: `leave-${Date.now()}`, status: "Pending", createdAt: nowIso() });
-  const leaves = getLocal("leaves", []);
-  leaves.unshift(newLeave);
-  setLocal("leaves", leaves);
+  if (!newLeave) {
+    newLeave = mapLeave({ ...payload, id: `leave-${Date.now()}`, status: "Pending", createdAt: nowIso() });
+    const leaves = getLocal("leaves", []);
+    leaves.unshift(newLeave);
+    setLocal("leaves", leaves);
+  }
+
+  // Automatic Notification for ADMIN
+  await sendNotification({
+    title: `New Leave Application Submitted`,
+    message: `${payload.studentName || "Student"} (${payload.studentId || "N/A"}) submitted a leave request (${payload.startDate} to ${payload.endDate}). Reason: ${payload.reason || "N/A"}`,
+    type: "Leave",
+    priority: "High",
+    targetAudience: "ADMIN",
+    receiverRole: "ADMIN",
+    senderId: payload.studentId,
+    senderName: payload.studentName || "Student",
+    relatedRecordId: newLeave.id
+  }).catch(() => null);
+
   return newLeave;
 };
 
 export const updateLeaveStatus = async (id, status, reviewer) => {
+  let updatedLeave = null;
   const client = db();
   if (client) {
     try {
@@ -806,18 +826,33 @@ export const updateLeaveStatus = async (id, status, reviewer) => {
           .select()
           .single()
       );
-      if (result) return mapLeave(result);
+      if (result) updatedLeave = mapLeave(result);
     } catch (e) {}
   }
 
-  const leaves = getLocal("leaves", []);
-  const idx = leaves.findIndex((l) => l.id === id);
-  if (idx !== -1) {
-    leaves[idx] = mapLeave({ ...leaves[idx], status, reviewedBy: reviewer?.name || "Admin", reviewedAt: nowIso() });
-    setLocal("leaves", leaves);
-    return leaves[idx];
+  if (!updatedLeave) {
+    const leaves = getLocal("leaves", []);
+    const idx = leaves.findIndex((l) => l.id === id);
+    if (idx !== -1) {
+      leaves[idx] = mapLeave({ ...leaves[idx], status, reviewedBy: reviewer?.name || "Admin", reviewedAt: nowIso() });
+      setLocal("leaves", leaves);
+      updatedLeave = leaves[idx];
+    }
   }
-  return null;
+
+  if (updatedLeave && updatedLeave.studentId) {
+    await sendNotification({
+      title: `Leave Application ${status}`,
+      message: `Your leave request (${updatedLeave.startDate} to ${updatedLeave.endDate}) was ${status.toLowerCase()} by ${reviewer?.name || "Admin"}.`,
+      targetAudience: "STUDENT",
+      receiverStudentId: updatedLeave.studentId,
+      receiverRole: "STUDENT",
+      type: "Leave",
+      priority: "High"
+    }, reviewer).catch(() => null);
+  }
+
+  return updatedLeave;
 };
 
 export const deleteLeave = async (id) => {
@@ -851,6 +886,8 @@ export const listComplaints = async (studentId) => {
 };
 
 export const createComplaint = async (payload) => {
+  const targetRecipient = payload.targetRecipient || "BOTH";
+  let newComplaint = null;
   const client = db();
   if (client) {
     try {
@@ -862,20 +899,37 @@ export const createComplaint = async (payload) => {
             type: payload.type, 
             description: payload.description, 
             priority: payload.priority || "Medium", 
+            target_recipient: targetRecipient,
             status: "Open", 
             date: todayIso() 
           }])
           .select()
           .single()
       );
-      if (result) return mapComplaint(result);
+      if (result) newComplaint = mapComplaint(result);
     } catch (e) {}
   }
 
-  const newComplaint = mapComplaint({ ...payload, id: `complaint-${Date.now()}`, status: "Open", date: todayIso(), createdAt: nowIso() });
-  const complaints = getLocal("complaints", []);
-  complaints.unshift(newComplaint);
-  setLocal("complaints", complaints);
+  if (!newComplaint) {
+    newComplaint = mapComplaint({ ...payload, id: `complaint-${Date.now()}`, targetRecipient, status: "Open", date: todayIso(), createdAt: nowIso() });
+    const complaints = getLocal("complaints", []);
+    complaints.unshift(newComplaint);
+    setLocal("complaints", complaints);
+  }
+
+  const recRole = targetRecipient === "EMPLOYEE" ? "EMPLOYEE" : "ADMIN";
+  await sendNotification({
+    title: `New ${payload.type || "General"} Complaint`,
+    message: `${payload.studentName || "Student"} (${payload.studentId || "N/A"}) submitted a ${payload.priority || "Medium"} complaint: "${payload.description || ""}"`,
+    type: "Complaint",
+    priority: payload.priority || "Medium",
+    targetAudience: recRole,
+    receiverRole: recRole,
+    senderId: payload.studentId,
+    senderName: payload.studentName || "Student",
+    relatedRecordId: newComplaint.id
+  }).catch(() => null);
+
   return newComplaint;
 };
 
@@ -1249,16 +1303,31 @@ export const deleteNotice = async (id) => {
 // ============================================================
 
 export const sendNotification = async (payload, sender) => { 
+  const title = payload.title || "Notification";
+  const message = payload.message || "";
+  const type = payload.type || "Info";
+  const priority = payload.priority || "Normal";
+  const targetAudience = payload.targetAudience || "ALL";
+  const senderId = payload.senderId || sender?.id || sender?.studentId || null;
+  const senderName = sender?.name || payload.senderName || "System";
+  const receiverStudentId = payload.receiverStudentId || null;
+  const receiverId = payload.receiverId || null;
+  const receiverRole = payload.receiverRole || null;
+  const relatedRecordId = payload.relatedRecordId || null;
+
   const newNotif = mapNotification({
-    id: `notif-${Date.now()}`,
-    title: payload.title || "Notification",
-    message: payload.message || "",
-    type: payload.type || "Info",
-    priority: payload.priority || "Normal",
-    targetAudience: payload.targetAudience || "ALL",
-    senderName: sender?.name || "System",
-    receiverStudentId: payload.receiverStudentId || null,
-    receiverRole: payload.receiverRole || null,
+    id: `notif-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+    title,
+    message,
+    type,
+    priority,
+    targetAudience,
+    senderId,
+    senderName,
+    receiverStudentId,
+    receiverId,
+    receiverRole,
+    relatedRecordId,
     createdAt: nowIso()
   });
 
@@ -1270,24 +1339,35 @@ export const sendNotification = async (payload, sender) => {
   if (client) {
     try {
       await getData(client.from("notifications").insert([{ 
-        title: payload.title, 
-        message: payload.message, 
-        type: payload.type, 
-        priority: payload.priority, 
-        target_audience: payload.targetAudience || "ALL", 
-        sender_name: sender?.name || "System", 
-        receiver_student_id: payload.receiverStudentId || null, 
-        receiver_role: payload.receiverRole || null, 
+        title, 
+        message, 
+        type, 
+        priority, 
+        target_audience: targetAudience, 
+        sender_id: senderId,
+        sender_name: senderName, 
+        receiver_student_id: receiverStudentId, 
+        receiver_id: receiverId,
+        receiver_role: receiverRole, 
+        related_record_id: relatedRecordId,
         created_at: nowIso() 
       }]));
-    } catch (e) {}
+    } catch (e) {
+      console.error("sendNotification DB error:", e);
+    }
   }
 
   return [newNotif];
 };
 
+export const createNotification = sendNotification;
+
 export const listNotificationsForUser = async (user) => { 
   if (!user) return [];
+  const userKey = user.id || user.studentId || user.role || "user";
+  const readNotifIds = getLocal(`read_notifs_${userKey}`, []);
+
+  let notifList = [];
   const client = db();
   if (client) {
     try {
@@ -1297,20 +1377,78 @@ export const listNotificationsForUser = async (user) => {
           .order("created_at", { ascending: false })
           .limit(100)
       );
-      if (rows && rows.length > 0) return rows.map(mapNotification);
+      if (rows && rows.length > 0) {
+        notifList = rows.map(mapNotification);
+      }
     } catch (e) {}
   }
 
-  const notifs = getLocal("notifications", []).map(mapNotification);
-  return notifs.filter((n) => {
-    if (n.targetAudience === "ALL") return true;
-    if (n.targetAudience === user.role) return true;
-    if (n.receiverStudentId === user.studentId) return true;
+  if (!notifList.length) {
+    notifList = getLocal("notifications", []).map(mapNotification);
+  }
+
+  return notifList.filter((n) => {
+    // 1. Specific student targeting
+    if (n.receiverStudentId) {
+      if (user.role === "STUDENT") {
+        return String(user.studentId) === String(n.receiverStudentId);
+      }
+      return user.role === "ADMIN" || user.role === "EMPLOYEE";
+    }
+
+    // 2. Specific user ID targeting
+    if (n.receiverId) {
+      return String(user.id) === String(n.receiverId) || String(user.studentId) === String(n.receiverId);
+    }
+
+    // 3. Explicit Role-based targeting
+    if (n.receiverRole) {
+      if (n.receiverRole === "ADMIN") return user.role === "ADMIN";
+      if (n.receiverRole === "EMPLOYEE") return user.role === "EMPLOYEE" || user.role === "ADMIN";
+      if (n.receiverRole === "STUDENT") return user.role === "STUDENT";
+    }
+
+    // 4. Target audience broadcast & role isolation
+    const audience = String(n.targetAudience || "ALL").toUpperCase();
+
+    if (user.role === "ADMIN") {
+      return true; // Admin sees administrative logs & system notifications
+    }
+
+    if (user.role === "STUDENT") {
+      // Students MUST NOT see notifications meant for ADMIN or EMPLOYEE
+      if (audience === "ADMIN" || audience === "EMPLOYEE" || audience === "STAFF") return false;
+
+      // Students MUST NOT see private leave, complaint, or payment notifications from other students
+      if (n.senderId && String(n.senderId) !== String(user.studentId) && (n.type === "Leave" || n.type === "Complaint" || n.type === "Payment")) {
+        return false;
+      }
+      return audience === "ALL" || audience === "STUDENT" || audience === "STUDENTS";
+    }
+
+    if (user.role === "EMPLOYEE") {
+      if (audience === "STUDENT" || audience === "STUDENTS") return false;
+      return audience === "ALL" || audience === "EMPLOYEE" || audience === "EMPLOYEES" || audience === "ALL_STAFF" || audience === "STAFF";
+    }
+
     return false;
-  });
+  }).map((n) => ({
+    ...n,
+    isRead: readNotifIds.includes(n.id) || Boolean(n.isRead)
+  }));
 };
 
-export const markNotificationRead = async (id) => {
+export const markNotificationRead = async (id, user) => {
+  if (user) {
+    const userKey = user.id || user.studentId || user.role || "user";
+    const readNotifIds = getLocal(`read_notifs_${userKey}`, []);
+    if (!readNotifIds.includes(id)) {
+      readNotifIds.push(id);
+      setLocal(`read_notifs_${userKey}`, readNotifIds);
+    }
+  }
+
+  // Update in local notifications state as well
   const notifs = getLocal("notifications", []);
   const idx = notifs.findIndex((n) => n.id === id);
   if (idx !== -1) {
@@ -1320,20 +1458,37 @@ export const markNotificationRead = async (id) => {
   }
 
   const client = db();
-  if (client) {
+  if (client && user) {
     try {
-      await getOne(
-        client.from("notifications")
-          .update({ is_read: true, read_at: nowIso() })
-          .eq("id", id)
+      await getData(
+        client.from("notification_receipts")
+          .upsert([{ 
+            notification_id: id, 
+            receiver_id: user.id || undefined, 
+            receiver_student_id: user.studentId || null, 
+            receiver_role: user.role || null, 
+            is_read: true, 
+            read_at: nowIso() 
+          }], { onConflict: "notification_id,receiver_id" })
       );
     } catch (e) {}
   }
-  return notifs[idx] || null;
+
+  return { id, isRead: true };
 };
 
-export const markAllNotificationsRead = async (ids) => { 
+export const markAllNotificationsRead = async (ids = [], user = null) => { 
   if (!ids || !ids.length) return [];
+
+  if (user) {
+    const userKey = user.id || user.studentId || user.role || "user";
+    const readNotifIds = getLocal(`read_notifs_${userKey}`, []);
+    ids.forEach((id) => {
+      if (!readNotifIds.includes(id)) readNotifIds.push(id);
+    });
+    setLocal(`read_notifs_${userKey}`, readNotifIds);
+  }
+
   const notifs = getLocal("notifications", []);
   notifs.forEach((n) => {
     if (ids.includes(n.id)) {

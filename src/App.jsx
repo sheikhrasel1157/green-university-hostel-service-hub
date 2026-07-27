@@ -60,7 +60,13 @@ class ErrorBoundary extends Component {
 
 export default function App() {
   const [user, setUser] = useState(null);
-  const [activePage, setActivePage] = useState("dashboard");
+  const [activePage, setActivePage] = useState(() => {
+    try {
+      return localStorage.getItem("hostel_active_page") || "dashboard";
+    } catch (e) {
+      return "dashboard";
+    }
+  });
   const [guestViewingAbout, setGuestViewingAbout] = useState(false);
   const [isOnline, setIsOnline] = useState(
     typeof navigator !== "undefined" ? navigator.onLine : true
@@ -104,7 +110,8 @@ export default function App() {
 
   const handleLogin = (loggedInUser) => {
     if (!loggedInUser) return;
-    setActivePage("dashboard");
+    const savedPage = localStorage.getItem("hostel_active_page") || "dashboard";
+    setActivePage(savedPage);
     setUser(loggedInUser);
     try {
       localStorage.setItem("hostel_user", JSON.stringify(loggedInUser));
@@ -119,6 +126,7 @@ export default function App() {
     setActivePage("dashboard");
     try {
       localStorage.removeItem("hostel_user");
+      localStorage.removeItem("hostel_active_page");
     } catch (e) {
       console.error("Failed to remove user:", e);
     }
@@ -130,6 +138,9 @@ export default function App() {
       setGuestViewingAbout(false);
     } else {
       setActivePage(page);
+      try {
+        localStorage.setItem("hostel_active_page", page);
+      } catch (e) {}
     }
   };
 

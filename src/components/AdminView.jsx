@@ -24,6 +24,7 @@ const StudentDetailsView = ({ student, onBack }) => {
   const [visitors, setVisitors] = useState([]);
   const [paymentModal, setPaymentModal] = useState(null);
   const [receiptModal, setReceiptModal] = useState(null);
+  const [showRejectConfirm, setShowRejectConfirm] = useState(false);
 
   const loadStudentData = async () => {
     setLoading(true);
@@ -87,6 +88,15 @@ const StudentDetailsView = ({ student, onBack }) => {
 
   if (loading) return <LoadingState />;
 
+  const currentMonthStr = api.todayIso().slice(0, 7);
+  const currentMonthName = new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" });
+  const studentMonthMeals = (meals || []).filter((m) => m.date && m.date.startsWith(currentMonthStr) && m.status !== "Cancelled");
+  
+  const studentBf = studentMonthMeals.filter((m) => m.type === "Breakfast").length;
+  const studentLunch = studentMonthMeals.filter((m) => m.type === "Lunch").length;
+  const studentDinner = studentMonthMeals.filter((m) => m.type === "Dinner").length;
+  const studentTotalMeals = studentMonthMeals.length;
+
   return (
     <div className="space-y-6 animate-fade-in font-sans">
       <div className="flex items-center justify-between">
@@ -137,11 +147,63 @@ const StudentDetailsView = ({ student, onBack }) => {
               <div>
                 <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Account Status</p>
                 <StatusBadge tone={student.isActive ? "green" : "red"}>
-                  {student.isActive ? "Active Resident" : "Inactive"}
+                  {student.isActive ? "Active Resident" : "Inactive / Discharged"}
                 </StatusBadge>
               </div>
             </div>
           </div>
+        </div>
+      </Card>
+
+      {/* Current Month Student Meal Count Box */}
+      <Card className="p-5 border-emerald-200 bg-emerald-50/30">
+        <div className="flex items-center justify-between pb-3 border-b border-emerald-200/60 mb-4">
+          <div className="flex items-center gap-2 text-emerald-900 font-extrabold text-sm">
+            <Utensils className="w-5 h-5 text-emerald-600" />
+            <span>Current Month Meal Count ({currentMonthName})</span>
+          </div>
+          <span className="text-[11px] font-bold text-emerald-700 bg-emerald-100 px-2.5 py-1 rounded-full border border-emerald-200">
+            Refreshes Monthly
+          </span>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+          <div className="bg-white p-3 rounded-xl border border-emerald-100 shadow-2xs">
+            <p className="text-[10px] font-bold uppercase text-slate-400">Total Meals Taken</p>
+            <p className="text-xl font-extrabold text-slate-800 mt-0.5">{studentTotalMeals}</p>
+          </div>
+          <div className="bg-white p-3 rounded-xl border border-emerald-100 shadow-2xs">
+            <p className="text-[10px] font-bold uppercase text-amber-600">Breakfast</p>
+            <p className="text-xl font-bold text-amber-700 mt-0.5">{studentBf}</p>
+          </div>
+          <div className="bg-white p-3 rounded-xl border border-emerald-100 shadow-2xs">
+            <p className="text-[10px] font-bold uppercase text-orange-600">Lunch</p>
+            <p className="text-xl font-bold text-orange-700 mt-0.5">{studentLunch}</p>
+          </div>
+          <div className="bg-white p-3 rounded-xl border border-emerald-100 shadow-2xs">
+            <p className="text-[10px] font-bold uppercase text-indigo-600">Dinner</p>
+            <p className="text-xl font-bold text-indigo-700 mt-0.5">{studentDinner}</p>
+          </div>
+        </div>
+      </Card>
+
+      {/* Sensitive Actions / Secure Discharge Zone */}
+      <Card className="p-5 border-red-200 bg-red-50/40">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h3 className="font-extrabold text-red-900 text-sm flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 text-red-600" /> Administrative Discharge & Account Rejection Zone
+            </h3>
+            <p className="text-xs text-red-700 mt-1">
+              Discharging or rejecting a student is a sensitive action that deactivates their hostel account, releases their assigned room seat, and clears active meal schedules.
+            </p>
+          </div>
+          <Button 
+            variant="danger" 
+            onClick={() => setShowRejectConfirm(true)}
+            className="flex-shrink-0 text-xs py-2.5 px-4 font-bold cursor-pointer"
+          >
+            Reject / Discharge Student
+          </Button>
         </div>
       </Card>
 
@@ -244,7 +306,103 @@ const StudentDetailsView = ({ student, onBack }) => {
           onClose={() => setReceiptModal(null)} 
         />
       )}
+
+      {/* Explicit Discharge Confirmation Modal */}
+      {showRejectConfirm && (
+        <Modal 
+          title="Confirm Student Discharge / Rejection" 
+          onClose={() => setShowRejectConfirm(false)}
+          footer={
+            <>
+              <Button variant="secondary" onClick={() => setShowRejectConfirm(false)}>Cancel</Button>
+              <Button 
+                variant="danger" 
+                onClick={async () => {
+                  await api.rejectStudent(student.id);
+                  setShowRejectConfirm(false);
+                  if (onBack) onBack();
+                }}
+              >
+                Confirm & Discharge Student
+              </Button>
+            </>
+          }
+        >
+          <div className="space-y-3 text-xs text-slate-700">
+            <p className="font-bold text-red-600">
+              Warning: You are about to discharge / reject <span className="underline">{student.name}</span> (ID: {student.studentId}).
+            </p>
+            <p>
+              This will set their account status to <b>Discharged / Inactive</b>, release seat <b>Room {student.roomNumber || "N/A"}</b>, and prevent future meal bookings.
+            </p>
+            <p className="text-slate-500 italic">
+              Please ensure all outstanding financial dues are settled prior to confirming discharge.
+            </p>
+          </div>
+        </Modal>
+      )}
     </div>
+  );
+};
+
+// Resolve Complaint Modal
+const ResolveComplaintModal = ({ complaint, onClose, onSave }) => {
+  const [form, setForm] = useState({
+    id: complaint.id,
+    type: complaint.type || "Maintenance",
+    description: complaint.description || "",
+    priority: complaint.priority || "Medium",
+    targetRecipient: complaint.targetRecipient || "BOTH",
+    assignedTo: complaint.assignedTo || "",
+    status: complaint.status || "In Progress",
+    resolutionNote: complaint.resolutionNote || ""
+  });
+
+  return (
+    <Modal 
+      title="Resolve Complaint & Provide Student Feedback" 
+      onClose={onClose} 
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>Cancel</Button>
+          <Button onClick={() => onSave(form)}>Save Resolution</Button>
+        </>
+      }
+    >
+      <div className="space-y-4 text-xs">
+        <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+          <p className="font-bold text-slate-800">{complaint.studentName || "Student"} <span className="text-slate-500 font-normal">({complaint.studentId})</span></p>
+          <p className="text-slate-600 mt-1 italic">"{complaint.description}"</p>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <Field label="Complaint Status">
+            <SelectInput value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}>
+              <option value="Open">Open</option>
+              <option value="In Progress">In Progress</option>
+              <option value="Resolved">Resolved</option>
+              <option value="Rejected">Rejected</option>
+            </SelectInput>
+          </Field>
+          <Field label="Assign Staff Member / Department">
+            <TextInput 
+              value={form.assignedTo} 
+              onChange={(e) => setForm({ ...form, assignedTo: e.target.value })} 
+              placeholder="e.g. Shahidul Islam / Housekeeping" 
+            />
+          </Field>
+        </div>
+
+        <Field label="Resolution Details / Reply Note for Student">
+          <TextArea 
+            rows={4} 
+            value={form.resolutionNote} 
+            onChange={(e) => setForm({ ...form, resolutionNote: e.target.value })} 
+            placeholder="Explain action taken or response to student..." 
+          />
+        </Field>
+      </div>
+    </Modal>
   );
 };
 
@@ -270,8 +428,19 @@ export const AdminView = ({ activePage, onNavigate, user }) => {
   const [staffSearch, setStaffSearch] = useState("");
   const [staffBlockFilter, setStaffBlockFilter] = useState("ALL");
   const [search, setSearch] = useState("");
+  const [leaveStatusFilter, setLeaveStatusFilter] = useState("ALL");
+  const [complaintStatusFilter, setComplaintStatusFilter] = useState("ALL");
+  const [complaintPriorityFilter, setComplaintPriorityFilter] = useState("ALL");
   const [modal, setModal] = useState(null);
   const [selectedStudent, setSelectedStudent] = useState(null);
+
+  const pendingLeaves = useMemo(() => {
+    return (leaves || []).filter((l) => l.status === "Pending");
+  }, [leaves]);
+
+  const openComplaints = useMemo(() => {
+    return (complaints || []).filter((c) => c.status === "Open" || c.status === "In Progress");
+  }, [complaints]);
 
   const filteredStudents = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -358,7 +527,7 @@ export const AdminView = ({ activePage, onNavigate, user }) => {
   };
 
   const approve = (student) => run(() => api.approveStudent(student.id), `${student.name} approved`);
-  const reject = (student) => { if (confirmAction(`Reject ${student.name}'s application?`)) run(() => api.rejectStudent(student.id), `${student.name} rejected`); };
+  const reject = (student) => run(() => api.rejectStudent(student.id), `${student.name} rejected`);
   const changeLeave = (leave, status) => run(() => api.updateLeaveStatus(leave.id, status, user), `Leave request ${status.toLowerCase()}`);
   const resolveComplaint = (complaint) => run(() => api.updateComplaint(complaint.id, { ...complaint, status: "Resolved" }), "Complaint resolved");
 
@@ -466,7 +635,6 @@ export const AdminView = ({ activePage, onNavigate, user }) => {
                 <div key="act" className="flex flex-wrap gap-2">
                   <Button variant="secondary" onClick={() => setSelectedStudent(s)}><Eye className="w-3.5 h-3.5" /> Details</Button>
                   {!s.isApproved && <Button onClick={() => approve(s)}>Approve</Button>}
-                  <Button variant="danger" onClick={() => reject(s)}>Reject</Button>
                 </div>
               ]; 
             })} 
@@ -507,10 +675,58 @@ export const AdminView = ({ activePage, onNavigate, user }) => {
   }
 
   if (activePage === "meals") {
+    const currentMonthStr = api.todayIso().slice(0, 7);
+    const currentMonthName = new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" });
+
     return (
       <div className="space-y-6">
         <PageHeader title="Meal Schedules & Pricing" subtitle="Configure weekly menus, timing and prices" actions={<Button onClick={() => setModal({ type: "schedule", data: blankSchedule })}><Plus className="w-4 h-4" /> Add Schedule</Button>} />
+        
+        {/* Student Monthly Meal Count Overview Card for Admin */}
         <Card className="overflow-hidden">
+          <div className="p-5 border-b bg-emerald-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <h3 className="font-extrabold text-slate-800 flex items-center gap-2 text-sm">
+                <Utensils className="w-4 h-4 text-emerald-600" />
+                Student Monthly Meal Count ({currentMonthName})
+              </h3>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Real-time active meal count per student for the current month. Resets automatically every calendar month.
+              </p>
+            </div>
+            <StatusBadge tone="green">Monthly Auto-Reset</StatusBadge>
+          </div>
+          <DataTable 
+            headers={["Student Name", "Student ID", "Hostel Block & Room", "Breakfasts", "Lunches", "Dinners", "Total Monthly Meals"]} 
+            rows={(students || []).map((s) => {
+              const sMeals = (meals || []).filter((m) => m.studentId === s.studentId && m.date && m.date.startsWith(currentMonthStr) && m.status !== "Cancelled");
+              const bf = sMeals.filter((m) => m.type === "Breakfast").length;
+              const lunch = sMeals.filter((m) => m.type === "Lunch").length;
+              const dinner = sMeals.filter((m) => m.type === "Dinner").length;
+              const total = sMeals.length;
+
+              return [
+                <div key="name" className="flex items-center gap-2">
+                  <img src={s.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${s.studentId}`} alt={s.name} className="w-7 h-7 rounded-full object-cover border" />
+                  <span className="font-bold text-slate-800">{s.name}</span>
+                </div>,
+                <span key="id" className="font-mono text-xs text-slate-600">{s.studentId}</span>,
+                <span key="room" className="text-xs text-slate-600">{s.hostelBlock || "Hostel A"} - Room {s.roomNumber || "N/A"}</span>,
+                <span key="bf" className="font-semibold text-amber-700">{bf}</span>,
+                <span key="lunch" className="font-semibold text-orange-700">{lunch}</span>,
+                <span key="dinner" className="font-semibold text-indigo-700">{dinner}</span>,
+                <span key="tot" className="font-black text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200">
+                  {total} Meals
+                </span>
+              ];
+            })}
+          />
+        </Card>
+
+        <Card className="overflow-hidden">
+          <div className="p-4 border-b bg-gray-50">
+            <h3 className="font-extrabold text-slate-800 text-sm">Weekly Master Schedule & Menus</h3>
+          </div>
           <DataTable 
             headers={["Day", "Meal", "Menu", "Price", "Start Time", "Status", "Actions"]} 
             rows={schedules.map((m) => [
@@ -769,7 +985,7 @@ export const AdminView = ({ activePage, onNavigate, user }) => {
               <div className="flex gap-2 mt-4 pt-3 border-t border-gray-100">
                 <Button variant="secondary" onClick={() => setModal({ type: "notice", data: n })}><Edit className="w-3.5 h-3.5" /> Edit</Button>
                 <Button variant="secondary" onClick={() => run(() => api.upsertNotice({ ...n, isActive: !n.isActive }, user), n.isActive ? "Notice hidden" : "Notice published")}>{n.isActive ? "Hide" : "Publish"}</Button>
-                <Button variant="danger" onClick={() => confirmAction("Delete notice?") && run(() => api.deleteNotice(n.id), "Notice deleted")}><Trash2 className="w-3.5 h-3.5" /></Button>
+                <Button variant="danger" onClick={() => run(() => api.deleteNotice(n.id), "Notice deleted")}><Trash2 className="w-3.5 h-3.5" /></Button>
               </div>
             </Card>
           ))}
@@ -780,22 +996,156 @@ export const AdminView = ({ activePage, onNavigate, user }) => {
     );
   }
 
-  if (activePage === "notifications") {
+  if (activePage === "leaves") {
+    const filteredLeaves = leaves.filter((l) => {
+      const matchSearch = !search || 
+        (l.studentName && l.studentName.toLowerCase().includes(search.toLowerCase())) || 
+        (l.studentId && l.studentId.toLowerCase().includes(search.toLowerCase())) ||
+        (l.reason && l.reason.toLowerCase().includes(search.toLowerCase()));
+      const matchStatus = leaveStatusFilter === "ALL" || l.status === leaveStatusFilter;
+      return matchSearch && matchStatus;
+    });
+
     return (
       <div className="space-y-6">
-        <PageHeader title="Notification Broadcast" subtitle="Send targeted alerts to students and staff" actions={<Button onClick={() => setModal({ type: "notification", data: blankNotification })}><Bell className="w-4 h-4" /> Send Notification</Button>} />
+        <PageHeader 
+          title="Student Leave Applications" 
+          subtitle="Review, approve or reject hostel exit leave requests from students" 
+          actions={
+            <Button variant="secondary" onClick={load}>
+              <RefreshCcw className="w-4 h-4" /> Refresh
+            </Button>
+          } 
+        />
+
+        {/* Filters */}
+        <Card className="p-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="relative">
+              <Search className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
+              <TextInput className="pl-9" placeholder="Search student name, ID or leave reason..." value={search} onChange={(e) => setSearch(e.target.value)} />
+            </div>
+            <SelectInput value={leaveStatusFilter} onChange={(e) => setLeaveStatusFilter(e.target.value)}>
+              <option value="ALL">All Statuses</option>
+              <option value="Pending">Pending Only</option>
+              <option value="Approved">Approved</option>
+              <option value="Rejected">Rejected</option>
+            </SelectInput>
+          </div>
+        </Card>
+
         <Card className="overflow-hidden">
           <DataTable 
-            headers={["Title", "Audience", "Priority", "Created", "Read Status"]} 
-            rows={notificationRecords.map((n) => [
-              n.title, 
-              n.targetAudience, 
-              n.priority, 
-              api.formatDateTime(n.createdAt), 
-              n.isRead ? <StatusBadge key="sb" tone="green">Read</StatusBadge> : <StatusBadge key="sb" tone="orange">Unread</StatusBadge>
+            headers={["Student", "Dates", "Reason", "Status", "Reviewed By", "Actions"]} 
+            rows={filteredLeaves.map((l) => [
+              <div key="st font">
+                <p className="font-extrabold text-gray-800">{l.studentName || "Student"}</p>
+                <p className="text-[11px] text-gray-500">{l.studentId || "N/A"}</p>
+              </div>, 
+              <span key="dt" className="font-semibold text-gray-700">{l.startDate} to {l.endDate}</span>, 
+              <span key="re" className="text-xs text-gray-600 max-w-xs block" title={l.reason}>{l.reason}</span>, 
+              <StatusBadge key="sb" tone={l.status === "Approved" ? "green" : l.status === "Pending" ? "orange" : "red"}>{l.status}</StatusBadge>, 
+              <span key="rb" className="text-xs text-gray-500">{l.reviewedBy ? `${l.reviewedBy} (${api.formatDateTime(l.reviewedAt)})` : "N/A"}</span>, 
+              <div key="act" className="flex items-center gap-1.5">
+                {l.status === "Pending" ? (
+                  <>
+                    <Button size="sm" onClick={() => run(() => api.updateLeaveStatus(l.id, "Approved", user), `Leave request approved for ${l.studentName || "Student"}`)}>
+                      <Check className="w-3.5 h-3.5" /> Approve
+                    </Button>
+                    <Button size="sm" variant="danger" onClick={() => run(() => api.updateLeaveStatus(l.id, "Rejected", user), "Leave request rejected")}>
+                      Reject
+                    </Button>
+                  </>
+                ) : (
+                  <Button size="sm" variant="secondary" onClick={() => run(() => api.updateLeaveStatus(l.id, "Pending", user), "Status reset")}>
+                    Reset
+                  </Button>
+                )}
+              </div>
             ])} 
           />
         </Card>
+
+        {renderModal()}
+        <Toast toast={toast} />
+      </div>
+    );
+  }
+
+  if (activePage === "complaints") {
+    const filteredComplaints = complaints.filter((c) => {
+      const matchSearch = !search || 
+        (c.studentName && c.studentName.toLowerCase().includes(search.toLowerCase())) || 
+        (c.studentId && c.studentId.toLowerCase().includes(search.toLowerCase())) ||
+        (c.description && c.description.toLowerCase().includes(search.toLowerCase())) ||
+        (c.type && c.type.toLowerCase().includes(search.toLowerCase()));
+      const matchStatus = complaintStatusFilter === "ALL" || c.status === complaintStatusFilter;
+      const matchPriority = complaintPriorityFilter === "ALL" || c.priority === complaintPriorityFilter;
+      return matchSearch && matchStatus && matchPriority;
+    });
+
+    return (
+      <div className="space-y-6">
+        <PageHeader 
+          title="Student Complaints & Support Tickets" 
+          subtitle="Track, assign staff, and resolve student service complaints" 
+          actions={
+            <Button variant="secondary" onClick={load}>
+              <RefreshCcw className="w-4 h-4" /> Refresh
+            </Button>
+          } 
+        />
+
+        {/* Filters */}
+        <Card className="p-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="relative">
+              <Search className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
+              <TextInput className="pl-9" placeholder="Search complaint description or student..." value={search} onChange={(e) => setSearch(e.target.value)} />
+            </div>
+            <SelectInput value={complaintStatusFilter} onChange={(e) => setComplaintStatusFilter(e.target.value)}>
+              <option value="ALL">All Statuses</option>
+              <option value="Open">Open</option>
+              <option value="In Progress">In Progress</option>
+              <option value="Resolved">Resolved</option>
+              <option value="Rejected">Rejected</option>
+            </SelectInput>
+            <SelectInput value={complaintPriorityFilter} onChange={(e) => setComplaintPriorityFilter(e.target.value)}>
+              <option value="ALL">All Priorities</option>
+              <option value="Urgent">Urgent</option>
+              <option value="High">High</option>
+              <option value="Medium">Medium</option>
+              <option value="Low">Low</option>
+            </SelectInput>
+          </div>
+        </Card>
+
+        <Card className="overflow-hidden">
+          <DataTable 
+            headers={["Student", "Type", "Priority", "Target", "Description", "Status", "Assigned / Note", "Actions"]} 
+            rows={filteredComplaints.map((c) => [
+              <div key="st font">
+                <p className="font-extrabold text-gray-800">{c.studentName || "Student"}</p>
+                <p className="text-[11px] text-gray-500">{c.studentId || "N/A"}</p>
+              </div>, 
+              <span key="tp" className="font-semibold text-gray-700 text-xs">{c.type}</span>, 
+              <StatusBadge key="pb" tone={c.priority === "Urgent" ? "red" : c.priority === "High" ? "orange" : "blue"}>{c.priority}</StatusBadge>, 
+              <span key="tr" className="text-xs font-semibold text-purple-700 bg-purple-50 px-2 py-0.5 rounded">{c.targetRecipient || "BOTH"}</span>, 
+              <span key="desc" className="text-xs text-gray-600 max-w-xs block" title={c.description}>{c.description}</span>, 
+              <StatusBadge key="sb" tone={c.status === "Resolved" ? "green" : c.status === "In Progress" ? "blue" : c.status === "Rejected" ? "red" : "orange"}>{c.status}</StatusBadge>, 
+              <div key="an" className="text-xs text-gray-500 space-y-0.5">
+                {c.assignedTo && <p className="font-semibold text-slate-700">Assigned: {c.assignedTo}</p>}
+                {c.resolutionNote ? <p className="italic">{c.resolutionNote}</p> : <p className="text-slate-400">No response note</p>}
+              </div>, 
+              <div key="act" className="flex items-center gap-1.5">
+                <Button size="sm" variant="secondary" onClick={() => setModal({ type: "resolveComplaint", data: c })}>
+                  <Edit className="w-3.5 h-3.5" /> Resolve / Respond
+                </Button>
+              </div>
+            ])} 
+          />
+        </Card>
+
         {renderModal()}
         <Toast toast={toast} />
       </div>
@@ -832,70 +1182,184 @@ export const AdminView = ({ activePage, onNavigate, user }) => {
               <span className="text-purple-300">{user?.name || "Administrator"}</span> 🎓
             </h1>
             <p className="text-slate-200 text-sm md:text-base mt-4 max-w-2xl font-normal leading-relaxed">
-              Hostel administrative system operations are active and running smoothly. Manage student admissions, room allocations, meal routines, staff task assignments, and financial reports directly from the sidebar navigation.
+              Hostel administrative system operations are active and running smoothly. Manage student admissions, room allocations, leave authorizations, complaints, meal routines, staff task assignments, and financial reports directly from the sidebar navigation.
             </p>
           </div>
 
           {/* Quick Navigation Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 mt-10 pt-8 border-t border-white/10">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mt-10 pt-8 border-t border-white/10">
             <button
               type="button"
               onClick={() => onNavigate("students")}
-              className="group p-4 bg-white/5 hover:bg-white/15 rounded-2xl border border-white/10 transition-all text-left flex items-center gap-3.5 cursor-pointer"
+              className="group p-3 bg-white/5 hover:bg-white/15 rounded-2xl border border-white/10 transition-all text-left flex items-center gap-3 cursor-pointer"
             >
-              <div className="w-10 h-10 rounded-xl bg-purple-500/20 flex items-center justify-center text-purple-300 group-hover:scale-110 transition-transform flex-shrink-0">
-                <Users className="w-5 h-5" />
+              <div className="w-9 h-9 rounded-xl bg-purple-500/20 flex items-center justify-center text-purple-300 group-hover:scale-110 transition-transform flex-shrink-0">
+                <Users className="w-4 h-4" />
               </div>
               <div>
-                <h3 className="font-bold text-white text-sm">Students</h3>
-                <p className="text-[11px] text-slate-300">Admissions & profiles</p>
+                <h3 className="font-bold text-white text-xs">Students</h3>
+                <p className="text-[10px] text-slate-300">Admissions</p>
+              </div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => onNavigate("leaves")}
+              className="group p-3 bg-white/5 hover:bg-white/15 rounded-2xl border border-white/10 transition-all text-left flex items-center gap-3 cursor-pointer"
+            >
+              <div className="w-9 h-9 rounded-xl bg-blue-500/20 flex items-center justify-center text-blue-300 group-hover:scale-110 transition-transform flex-shrink-0">
+                <Calendar className="w-4 h-4" />
+              </div>
+              <div>
+                <h3 className="font-bold text-white text-xs">Leaves</h3>
+                <p className="text-[10px] text-slate-300">{pendingLeaves.length} Pending</p>
+              </div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => onNavigate("complaints")}
+              className="group p-3 bg-white/5 hover:bg-white/15 rounded-2xl border border-white/10 transition-all text-left flex items-center gap-3 cursor-pointer"
+            >
+              <div className="w-9 h-9 rounded-xl bg-rose-500/20 flex items-center justify-center text-rose-300 group-hover:scale-110 transition-transform flex-shrink-0">
+                <AlertCircle className="w-4 h-4" />
+              </div>
+              <div>
+                <h3 className="font-bold text-white text-xs">Complaints</h3>
+                <p className="text-[10px] text-slate-300">{openComplaints.length} Open</p>
               </div>
             </button>
 
             <button
               type="button"
               onClick={() => onNavigate("rooms")}
-              className="group p-4 bg-white/5 hover:bg-white/15 rounded-2xl border border-white/10 transition-all text-left flex items-center gap-3.5 cursor-pointer"
+              className="group p-3 bg-white/5 hover:bg-white/15 rounded-2xl border border-white/10 transition-all text-left flex items-center gap-3 cursor-pointer"
             >
-              <div className="w-10 h-10 rounded-xl bg-emerald-500/20 flex items-center justify-center text-emerald-300 group-hover:scale-110 transition-transform flex-shrink-0">
-                <Home className="w-5 h-5" />
+              <div className="w-9 h-9 rounded-xl bg-emerald-500/20 flex items-center justify-center text-emerald-300 group-hover:scale-110 transition-transform flex-shrink-0">
+                <Home className="w-4 h-4" />
               </div>
               <div>
-                <h3 className="font-bold text-white text-sm">Rooms</h3>
-                <p className="text-[11px] text-slate-300">Blocks & beds</p>
+                <h3 className="font-bold text-white text-xs">Rooms</h3>
+                <p className="text-[10px] text-slate-300">Blocks & beds</p>
               </div>
             </button>
 
             <button
               type="button"
               onClick={() => onNavigate("meals")}
-              className="group p-4 bg-white/5 hover:bg-white/15 rounded-2xl border border-white/10 transition-all text-left flex items-center gap-3.5 cursor-pointer"
+              className="group p-3 bg-white/5 hover:bg-white/15 rounded-2xl border border-white/10 transition-all text-left flex items-center gap-3 cursor-pointer"
             >
-              <div className="w-10 h-10 rounded-xl bg-amber-500/20 flex items-center justify-center text-amber-300 group-hover:scale-110 transition-transform flex-shrink-0">
-                <Utensils className="w-5 h-5" />
+              <div className="w-9 h-9 rounded-xl bg-amber-500/20 flex items-center justify-center text-amber-300 group-hover:scale-110 transition-transform flex-shrink-0">
+                <Utensils className="w-4 h-4" />
               </div>
               <div>
-                <h3 className="font-bold text-white text-sm">Meal Routine</h3>
-                <p className="text-[11px] text-slate-300">Schedules & menus</p>
+                <h3 className="font-bold text-white text-xs">Meals</h3>
+                <p className="text-[10px] text-slate-300">Schedules</p>
               </div>
             </button>
 
             <button
               type="button"
               onClick={() => onNavigate("reports")}
-              className="group p-4 bg-white/5 hover:bg-white/15 rounded-2xl border border-white/10 transition-all text-left flex items-center gap-3.5 cursor-pointer"
+              className="group p-3 bg-white/5 hover:bg-white/15 rounded-2xl border border-white/10 transition-all text-left flex items-center gap-3 cursor-pointer"
             >
-              <div className="w-10 h-10 rounded-xl bg-blue-500/20 flex items-center justify-center text-blue-300 group-hover:scale-110 transition-transform flex-shrink-0">
-                <DollarSign className="w-5 h-5" />
+              <div className="w-9 h-9 rounded-xl bg-cyan-500/20 flex items-center justify-center text-cyan-300 group-hover:scale-110 transition-transform flex-shrink-0">
+                <DollarSign className="w-4 h-4" />
               </div>
               <div>
-                <h3 className="font-bold text-white text-sm">Finance</h3>
-                <p className="text-[11px] text-slate-300">Billing & statements</p>
+                <h3 className="font-bold text-white text-xs">Finance</h3>
+                <p className="text-[10px] text-slate-300">Billing</p>
               </div>
             </button>
           </div>
         </div>
       </div>
+
+      {/* Pending Student Leave Requests Banner */}
+      {pendingLeaves.length > 0 && (
+        <Card className="p-5 border-blue-300 bg-blue-50/50">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 className="font-extrabold text-blue-900 text-sm flex items-center gap-2">
+                <Calendar className="w-4 h-4 text-blue-600" /> Pending Student Leave Requests ({pendingLeaves.length})
+              </h3>
+              <p className="text-xs text-blue-700 mt-0.5">Students requesting hostel exit leave authorization</p>
+            </div>
+            <Button size="sm" variant="secondary" onClick={() => onNavigate("leaves")}>
+              View All Leaves
+            </Button>
+          </div>
+
+          <div className="space-y-3">
+            {pendingLeaves.map((leave) => (
+              <div key={leave.id} className="p-4 bg-white rounded-2xl border border-blue-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 text-xs shadow-xs">
+                <div>
+                  <p className="font-bold text-slate-800">{leave.studentName || "Student"} <span className="text-slate-400 font-normal">({leave.studentId})</span></p>
+                  <p className="text-slate-500 mt-0.5">Dates: <span className="font-bold text-slate-700">{leave.startDate} to {leave.endDate}</span></p>
+                  <p className="text-slate-600 mt-1 italic">"{leave.reason}"</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button 
+                    size="sm" 
+                    onClick={() => run(() => api.updateLeaveStatus(leave.id, "Approved", user), `Leave request approved for ${leave.studentName || "Student"}`)}
+                  >
+                    <Check className="w-3.5 h-3.5" /> Approve
+                  </Button>
+                  <Button 
+                    size="sm" 
+                    variant="danger" 
+                    onClick={() => run(() => api.updateLeaveStatus(leave.id, "Rejected", user), "Leave request rejected")}
+                  >
+                    Reject
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
+      {/* Open Student Complaints Banner */}
+      {openComplaints.length > 0 && (
+        <Card className="p-5 border-rose-300 bg-rose-50/50">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 className="font-extrabold text-rose-900 text-sm flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-rose-600" /> Open Student Complaints ({openComplaints.length})
+              </h3>
+              <p className="text-xs text-rose-700 mt-0.5">Service issues and maintenance tickets requiring administrative resolution</p>
+            </div>
+            <Button size="sm" variant="secondary" onClick={() => onNavigate("complaints")}>
+              View All Complaints
+            </Button>
+          </div>
+
+          <div className="space-y-3">
+            {openComplaints.slice(0, 5).map((comp) => (
+              <div key={comp.id} className="p-4 bg-white rounded-2xl border border-rose-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 text-xs shadow-xs">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p className="font-bold text-slate-800">{comp.studentName || "Student"} <span className="text-slate-400 font-normal">({comp.studentId})</span></p>
+                    <StatusBadge tone={comp.priority === "Urgent" ? "red" : comp.priority === "High" ? "orange" : "blue"}>{comp.priority}</StatusBadge>
+                    <span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded text-[10px] font-semibold">{comp.type}</span>
+                    <span className="bg-purple-100 text-purple-700 px-2 py-0.5 rounded text-[10px] font-semibold">To: {comp.targetRecipient || "BOTH"}</span>
+                  </div>
+                  <p className="text-slate-600 italic">"{comp.description}"</p>
+                  <p className="text-[10px] text-slate-400">Logged on {comp.date}</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button 
+                    size="sm" 
+                    onClick={() => setModal({ type: "resolveComplaint", data: comp })}
+                  >
+                    Resolve / Respond
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
 
       {renderModal()}
       <Toast toast={toast} />
@@ -932,6 +1396,16 @@ export const AdminView = ({ activePage, onNavigate, user }) => {
     );
     if (modal.type === "receipt") return <ReceiptModal receipt={data} student={data.student || { name: data.studentName, studentId: data.studentId, department: data.department, hostelBlock: data.hostelBlock, roomNumber: data.roomNo }} onClose={() => setModal(null)} />;
     if (modal.type === "notification") return <NotificationForm initial={data} onClose={() => setModal(null)} onSave={sendAdminNotification} />;
+    if (modal.type === "resolveComplaint") return (
+      <ResolveComplaintModal 
+        complaint={data} 
+        onClose={() => setModal(null)} 
+        onSave={(updated) => {
+          run(() => api.updateComplaint(updated.id, updated, user), "Complaint status updated and student notified");
+          setModal(null);
+        }} 
+      />
+    );
     return null;
   }
 };

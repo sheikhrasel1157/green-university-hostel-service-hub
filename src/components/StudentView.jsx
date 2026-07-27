@@ -393,7 +393,7 @@ export const StudentView = ({ user, activePage, onNavigate }) => {
 
               <button
                 type="button"
-                onClick={() => onNavigate("financials")}
+                onClick={() => onNavigate("fees")}
                 className="group p-4 bg-white/5 hover:bg-white/15 rounded-2xl border border-white/10 transition-all text-left flex items-center gap-4 cursor-pointer"
               >
                 <div className="w-10 h-10 rounded-xl bg-amber-500/20 flex items-center justify-center text-amber-300 group-hover:scale-110 transition-transform">
@@ -417,6 +417,16 @@ export const StudentView = ({ user, activePage, onNavigate }) => {
   // MEAL MANAGEMENT PAGE
   // ============================================================
   if (activePage === "meals") {
+    const currentMonthStr = todayStr.slice(0, 7);
+    const currentMonthName = new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" });
+    const currentMonthMeals = (meals || []).filter((m) => m.date && m.date.startsWith(currentMonthStr));
+    const activeMonthMeals = currentMonthMeals.filter((m) => m.status !== "Cancelled" && !isStudentOnApprovedLeave(m.date, leaves));
+
+    const bfCount = activeMonthMeals.filter((m) => m.type === "Breakfast").length;
+    const lunchCount = activeMonthMeals.filter((m) => m.type === "Lunch").length;
+    const dinnerCount = activeMonthMeals.filter((m) => m.type === "Dinner").length;
+    const totalMonthCount = activeMonthMeals.length;
+
     return (
       <div className="space-y-6 font-sans animate-fade-in">
         <PageHeader 
@@ -428,6 +438,57 @@ export const StudentView = ({ user, activePage, onNavigate }) => {
             </Button>
           } 
         />
+
+        {/* Monthly Meal Count Card */}
+        <div className="bg-gradient-to-r from-emerald-800 via-emerald-900 to-slate-900 text-white rounded-3xl p-6 shadow-xl border border-emerald-700/40">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-white/10">
+            <div className="flex items-center gap-3">
+              <div className="p-3 bg-white/10 rounded-2xl backdrop-blur-md text-emerald-300">
+                <Utensils className="w-6 h-6" />
+              </div>
+              <div>
+                <span className="text-[10px] uppercase font-bold tracking-wider text-emerald-300">
+                  Monthly Meal Tracker • {currentMonthName}
+                </span>
+                <h2 className="text-xl font-black text-white">Monthly Meal Count</h2>
+              </div>
+            </div>
+            <div className="bg-emerald-500/20 text-emerald-300 px-3.5 py-1.5 rounded-full text-xs font-semibold border border-emerald-500/30 self-start sm:self-auto flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              Refreshes Each Month
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-5">
+            <div className="bg-white/5 rounded-2xl p-4 border border-white/10">
+              <p className="text-xs text-slate-300 font-medium">Total Meals Taken</p>
+              <p className="text-2xl sm:text-3xl font-extrabold text-white mt-1">
+                {totalMonthCount} <span className="text-xs font-normal text-emerald-300">meals</span>
+              </p>
+            </div>
+            <div className="bg-white/5 rounded-2xl p-4 border border-white/10">
+              <p className="text-xs text-slate-300 font-medium">Breakfast Count</p>
+              <p className="text-2xl sm:text-3xl font-bold text-amber-300 mt-1">
+                {bfCount}
+              </p>
+            </div>
+            <div className="bg-white/5 rounded-2xl p-4 border border-white/10">
+              <p className="text-xs text-slate-300 font-medium">Lunch Count</p>
+              <p className="text-2xl sm:text-3xl font-bold text-orange-300 mt-1">
+                {lunchCount}
+              </p>
+            </div>
+            <div className="bg-white/5 rounded-2xl p-4 border border-white/10">
+              <p className="text-xs text-slate-300 font-medium">Dinner Count</p>
+              <p className="text-2xl sm:text-3xl font-bold text-indigo-300 mt-1">
+                {dinnerCount}
+              </p>
+            </div>
+          </div>
+          <p className="text-[11px] text-slate-400 mt-4 italic text-right">
+            * Meal count is calculated for {currentMonthName} and automatically resets at the start of next month.
+          </p>
+        </div>
 
         {/* Active Actionable 3-Meal Cycle Section */}
         <div>
@@ -819,35 +880,6 @@ export const StudentView = ({ user, activePage, onNavigate }) => {
     );
   }
 
-  // ============================================================
-  // NOTIFICATIONS PAGE
-  // ============================================================
-  if (activePage === "notifications") {
-    return (
-      <div className="space-y-6 font-sans">
-        <PageHeader title="Notifications" subtitle={`${unreadCount} unread notification(s)`} actions={<Button variant="secondary" onClick={load}><RefreshCcw className="w-4 h-4" /> Refresh</Button>} />
-        {notifications.length ? notifications.map((n) => (
-          <Card key={n.id} className={`p-5 ${!n.isRead ? "border-blue-600 bg-blue-50/30" : ""}`}>
-            <div className="flex justify-between gap-4">
-              <div>
-                <p className="text-[10px] font-extrabold uppercase text-blue-600">{n.priority} • {n.type}</p>
-                <h3 className="font-extrabold text-gray-800 mt-0.5">{n.title}</h3>
-                <p className="text-sm text-gray-600 mt-2">{n.message}</p>
-                <p className="text-xs text-gray-400 mt-2">{api.formatDateTime(n.createdAt)}</p>
-              </div>
-              {!n.isRead && <StatusBadge tone="red">Unread</StatusBadge>}
-            </div>
-            {!n.isRead && (
-              <Button className="mt-4 text-xs" onClick={() => run(() => api.markNotificationRead(n.id), "Notification marked read")}>Mark Read</Button>
-            )}
-          </Card>
-        )) : (
-          <Card><EmptyState icon={<Bell />} title="No notifications" /></Card>
-        )}
-      </div>
-    );
-  }
-
   return null;
 
   function renderModal() {
@@ -864,15 +896,17 @@ export const StudentView = ({ user, activePage, onNavigate }) => {
     if (modal.type === "leave") {
       return (
         <LeaveForm 
-          initial={modal.data} 
+          initial={modal.data || { startDate: "", endDate: "", reason: "" }} 
           onClose={() => setModal(null)} 
           onSave={(form) => run(async () => { 
             await api.createLeave({ ...form, studentId: user.studentId, studentName: user.name }); 
             await api.sendNotification({ 
               title: "Leave request submitted", 
-              message: `${user.name} requested leave from ${form.startDate} to ${form.endDate}.`, 
-              targetAudience: "ADMINS", 
-              type: "Leave" 
+              message: `${user.name} (${user.studentId}) requested leave from ${form.startDate} to ${form.endDate}. Reason: ${form.reason || "N/A"}`, 
+              targetAudience: "ADMIN", 
+              receiverRole: "ADMIN",
+              type: "Leave",
+              priority: "High"
             }, user); 
             setModal(null); 
           }, "Leave application submitted successfully")} 
@@ -883,17 +917,19 @@ export const StudentView = ({ user, activePage, onNavigate }) => {
     if (modal.type === "complaint") {
       return (
         <ComplaintForm 
-          initial={modal.data} 
+          initial={modal.data || { type: "Maintenance", priority: "Medium", targetRecipient: "BOTH", description: "" }} 
           onClose={() => setModal(null)} 
           onSave={(form) => run(async () => { 
             await api.createComplaint({ ...form, studentId: user.studentId, studentName: user.name }); 
+            const audience = form.targetRecipient === "ADMIN" ? "ADMIN" : form.targetRecipient === "EMPLOYEE" ? "EMPLOYEE" : "ALL_STAFF";
             await api.sendNotification({ 
               title: "New complaint submitted", 
-              message: `${user.name}: ${form.type} - ${form.description}`, 
-              targetAudience: "ADMINS", 
+              message: `${user.name} (${user.studentId}): [${form.type}] ${form.description}`, 
+              targetAudience: audience, 
+              receiverRole: form.targetRecipient !== "BOTH" ? form.targetRecipient : null,
               type: "Complaint", 
-              priority: form.priority 
-            }); 
+              priority: form.priority || "Medium" 
+            }, user); 
             setModal(null); 
           }, "Complaint logged successfully")} 
         />
@@ -937,7 +973,7 @@ const LeaveForm = ({ initial, onClose, onSave }) => {
 };
 
 const ComplaintForm = ({ initial, onClose, onSave }) => {
-  const [form, setForm] = useState(initial);
+  const [form, setForm] = useState(initial || { type: "Maintenance", priority: "Medium", targetRecipient: "BOTH", description: "" });
   return (
     <Modal title="Submit Service Complaint" onClose={onClose} footer={<><Button variant="secondary" onClick={onClose}>Cancel</Button><Button onClick={() => onSave(form)}>Submit Complaint</Button></>}>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -957,6 +993,13 @@ const ComplaintForm = ({ initial, onClose, onSave }) => {
             <option value="Medium">Medium</option>
             <option value="High">High</option>
             <option value="Urgent">Urgent</option>
+          </SelectInput>
+        </Field>
+        <Field label="Send Complaint To">
+          <SelectInput value={form.targetRecipient || "BOTH"} onChange={(e) => setForm({ ...form, targetRecipient: e.target.value })}>
+            <option value="BOTH">Both (Admin & Hostel Staff)</option>
+            <option value="ADMIN">Admin Only</option>
+            <option value="EMPLOYEE">Hostel Staff Only</option>
           </SelectInput>
         </Field>
         <Field label="Detailed Description"><TextArea rows={4} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Describe the issue..." required /></Field>

@@ -27,13 +27,22 @@ export const DashboardLayout = ({ user, children, onLogout, activePage, onNaviga
   const openNotification = async (notif) => { 
     setSelectedNotification(notif); 
     if (!notif.isRead) { 
-      await markNotificationRead(notif.id).catch(() => null); 
+      await markNotificationRead(notif.id, user).catch(() => null); 
       await loadNotifications(); 
     } 
   };
 
+  const markSingleRead = async (e, notifId) => {
+    e.stopPropagation();
+    await markNotificationRead(notifId, user).catch(() => null);
+    await loadNotifications();
+    if (selectedNotification && selectedNotification.id === notifId) {
+      setSelectedNotification((prev) => prev ? { ...prev, isRead: true } : null);
+    }
+  };
+
   const readAll = async () => { 
-    await markAllNotificationsRead(unread.map((n) => n.id)).catch(() => null); 
+    await markAllNotificationsRead(unread.map((n) => n.id), user).catch(() => null); 
     await loadNotifications(); 
   };
 
@@ -49,26 +58,25 @@ export const DashboardLayout = ({ user, children, onLogout, activePage, onNaviga
       { id: "leave", icon: CalendarDays, label: "Leave Applications" },
       { id: "fees", icon: FileText, label: "Fee History" },
       { id: "complaints", icon: AlertCircle, label: "Complaints" },
-      { id: "notices", icon: BellRing, label: "Notices" },
-      { id: "notifications", icon: Bell, label: "Notifications" }
+      { id: "notices", icon: BellRing, label: "Notices" }
     );
   } else if (user.role === "ADMIN") {
     nav.push(
       { id: "students", icon: Users, label: "Students" },
       { id: "rooms", icon: Home, label: "Rooms" },
       { id: "meals", icon: Utensils, label: "Meals" },
+      { id: "leaves", icon: CalendarDays, label: "Leave Applications" },
+      { id: "complaints", icon: AlertCircle, label: "Complaints" },
       { id: "staff", icon: ClipboardList, label: "Employees & Tasks" },
       { id: "reports", icon: FileText, label: "Finance & Reports" },
-      { id: "notices", icon: BellRing, label: "Notices" },
-      { id: "notifications", icon: Bell, label: "Notifications" }
+      { id: "notices", icon: BellRing, label: "Notices" }
     );
   } else if (user.role === "EMPLOYEE") {
     nav.push(
       { id: "operations", icon: ClipboardList, label: "Operations" },
       { id: "attendance", icon: Users, label: "Visitor & Exit Desk" },
       { id: "students", icon: Users, label: "Student Management" },
-      { id: "notices", icon: BellRing, label: "Notices" },
-      { id: "notifications", icon: Bell, label: "Notifications" }
+      { id: "notices", icon: BellRing, label: "Notices" }
     );
   }
 
@@ -196,20 +204,30 @@ export const DashboardLayout = ({ user, children, onLogout, activePage, onNaviga
                       </div>
                     ) : (
                       notifications.map((notif) => (
-                        <button 
+                        <div
                           key={notif.id} 
                           onClick={() => openNotification(notif)} 
-                          className={`w-full text-left p-4 hover:bg-slate-50 transition-colors cursor-pointer ${!notif.isRead ? "bg-blue-50/60" : ""}`}
+                          className={`w-full text-left p-4 hover:bg-slate-50 transition-colors cursor-pointer flex items-start justify-between gap-3 ${!notif.isRead ? "bg-blue-50/60" : ""}`}
                         >
-                          <div className="flex gap-3 items-start">
+                          <div className="flex gap-3 items-start flex-1 min-w-0">
                             <span className={`mt-1.5 h-2 w-2 rounded-full flex-shrink-0 ${!notif.isRead ? "bg-blue-600" : "bg-slate-300"}`} />
-                            <div>
-                              <p className="font-bold text-xs text-slate-800">{notif.title}</p>
+                            <div className="min-w-0 flex-1">
+                              <p className="font-bold text-xs text-slate-800 truncate">{notif.title}</p>
                               <p className="text-xs text-slate-500 line-clamp-2 mt-0.5">{notif.message}</p>
                               <p className="text-[10px] text-slate-400 mt-1">{formatDateTime(notif.createdAt)}</p>
                             </div>
                           </div>
-                        </button>
+                          {!notif.isRead && (
+                            <button
+                              type="button"
+                              onClick={(e) => markSingleRead(e, notif.id)}
+                              className="text-[10px] font-bold text-blue-600 bg-blue-100 hover:bg-blue-200 px-2 py-1 rounded-lg transition-colors flex-shrink-0 cursor-pointer"
+                              title="Mark as read"
+                            >
+                              Mark Read
+                            </button>
+                          )}
+                        </div>
                       ))
                     )}
                   </div>
@@ -248,9 +266,24 @@ export const DashboardLayout = ({ user, children, onLogout, activePage, onNaviga
               </button>
             </div>
             <p className="text-slate-600 text-sm leading-relaxed mt-4 whitespace-pre-line">{selectedNotification.message}</p>
-            <div className="mt-6 pt-3 border-t border-slate-100 text-xs text-slate-500 space-y-1">
-              <p><b>Sender:</b> {selectedNotification.senderName}</p>
-              <p><b>Date:</b> {formatDateTime(selectedNotification.createdAt)}</p>
+            <div className="mt-6 pt-3 border-t border-slate-100 text-xs text-slate-500 flex items-center justify-between">
+              <div className="space-y-1">
+                <p><b>Sender:</b> {selectedNotification.senderName}</p>
+                <p><b>Date:</b> {formatDateTime(selectedNotification.createdAt)}</p>
+              </div>
+              {!selectedNotification.isRead ? (
+                <button
+                  type="button"
+                  onClick={(e) => markSingleRead(e, selectedNotification.id)}
+                  className="px-3 py-1.5 bg-blue-600 text-white font-bold text-xs rounded-xl hover:bg-blue-700 transition-colors shadow-xs cursor-pointer"
+                >
+                  Mark as Read
+                </button>
+              ) : (
+                <span className="text-xs font-semibold text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200">
+                  Read
+                </span>
+              )}
             </div>
           </div>
         </div>
